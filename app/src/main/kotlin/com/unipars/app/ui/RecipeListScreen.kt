@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
@@ -37,6 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.unipars.app.R
 import com.unipars.app.UniParsApp
 import com.unipars.app.data.RecipeStatus
@@ -60,13 +62,20 @@ fun statusText(status: RecipeStatus, enabled: Boolean): String = stringResource(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RecipeListScreen(onOpen: (String) -> Unit, onNew: () -> Unit, onSettings: () -> Unit) {
+fun RecipeListScreen(
+    onOpen: (String) -> Unit,
+    onNew: () -> Unit,
+    onSettings: () -> Unit,
+    onSetup: (url: String, goal: String) -> Unit,
+    assistant: AssistantViewModel = viewModel(),
+) {
     val ctx = LocalContext.current
     val app = ctx.applicationContext as UniParsApp
     val scope = rememberCoroutineScope()
     val recipes by remember { app.db.recipes().observeAll() }.collectAsStateWithLifecycle(initialValue = emptyList())
     val hasKey = remember { app.prefs.hasKey }
     var menu by remember { mutableStateOf(false) }
+    val assistantState by assistant.state.collectAsStateWithLifecycle()
 
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         uri ?: return@rememberLauncherForActivityResult
@@ -102,6 +111,11 @@ fun RecipeListScreen(onOpen: (String) -> Unit, onNew: () -> Unit, onSettings: ()
             TopAppBar(
                 title = { Text(stringResource(R.string.app_name)) },
                 actions = {
+                    if (assistantState.mode == AssistantMode.HIDDEN) {
+                        IconButton(onClick = { assistant.setMode(AssistantMode.EXPANDED) }) {
+                            Icon(Icons.Default.Search, contentDescription = stringResource(R.string.assistant_title))
+                        }
+                    }
                     IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings_title)) }
                     IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.action_more)) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -123,6 +137,7 @@ fun RecipeListScreen(onOpen: (String) -> Unit, onNew: () -> Unit, onSettings: ()
     ) { padding ->
         LazyColumn(Modifier.padding(padding).fillMaxSize().padding(horizontal = 12.dp)) {
             if (!hasKey) item { WarningCard(stringResource(R.string.list_no_key)) }
+            item { AssistantPanel(onSetup = onSetup, vm = assistant) }
             if (recipes.isEmpty()) item { Text(stringResource(R.string.list_empty), modifier = Modifier.padding(16.dp)) }
             items(recipes, key = { it.id }) { r ->
                 Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { onOpen(r.id) }) {

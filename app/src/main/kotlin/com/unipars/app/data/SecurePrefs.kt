@@ -112,6 +112,11 @@ class SecurePrefs(context: Context) {
         get() = prefs.getBoolean("notif_asked", false)
         set(v) = prefs.edit().putBoolean("notif_asked", v).apply()
 
+    /** EXPANDED | COLLAPSED | HIDDEN — home-screen assistant panel. */
+    var assistantMode: String
+        get() = prefs.getString("assistant_mode", "EXPANDED") ?: "EXPANDED"
+        set(v) = prefs.edit().putString("assistant_mode", v).apply()
+
     var lastUpdateCheck: Long
         get() = prefs.getLong("update_check", 0)
         set(v) = prefs.edit().putLong("update_check", v).apply()

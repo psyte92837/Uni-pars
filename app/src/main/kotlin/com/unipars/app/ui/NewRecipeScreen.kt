@@ -91,7 +91,7 @@ data class NewRecipeState(
 class NewRecipeViewModel(application: Application, handle: SavedStateHandle) : AndroidViewModel(application) {
     private val app = application as UniParsApp
     private val engine = SetupEngine(application)
-    val state = MutableStateFlow(NewRecipeState(url = handle.get<String>("url").orEmpty()))
+    val state = MutableStateFlow(NewRecipeState(url = handle.get<String>("url").orEmpty(), goal = handle.get<String>("goal").orEmpty()))
 
     fun setUrl(v: String) = state.update { it.copy(url = v) }
     fun setGoal(v: String) = state.update { it.copy(goal = v) }

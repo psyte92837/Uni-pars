@@ -89,10 +89,17 @@ fun AppNavHost(nav: NavHostController) {
             RecipeListScreen(
                 onOpen = { nav.navigate("recipe/$it") },
                 onNew = { nav.navigate("new") },
+                onSetup = { url, goal -> nav.navigate("new?url=" + Uri.encode(url) + "&goal=" + Uri.encode(goal)) },
                 onSettings = { nav.navigate("settings") },
             )
         }
-        composable("new?url={url}", arguments = listOf(navArgument("url") { type = NavType.StringType; nullable = true; defaultValue = null })) {
+        composable(
+            "new?url={url}&goal={goal}",
+            arguments = listOf(
+                navArgument("url") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("goal") { type = NavType.StringType; nullable = true; defaultValue = null },
+            ),
+        ) {
             NewRecipeScreen(onDone = { nav.popBackStack() })
         }
         composable("settings") { SettingsScreen(onBack = { nav.popBackStack() }) }

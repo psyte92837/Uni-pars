@@ -27,6 +27,7 @@ One line per file. Paths are under `<module>/src/main/kotlin/com/unipars/<module
 | `Prompts.kt` | System prompts; page data wrapped in `<untrusted_page_data>` |
 | `Drafts.kt` | Model output schema (`DraftSchema`) and mapping to engine types with clamping |
 | `SetupAssistant.kt` | research → draft → local verify → retry (≤3); repair; flags foreign sources |
+| `SiteAssistant.kt` | Home-screen helper: plan (help / site given / find sites) → web search → structured suggestions; drops hosts absent from search results |
 | `Pricing.kt` | Approximate $ per 1M tokens for the cost estimate |
 
 ## app — Android
@@ -49,7 +50,8 @@ One line per file. Paths are under `<module>/src/main/kotlin/com/unipars/<module
 | `update/UpdateChecker.kt` | GitHub Releases latest-version check |
 | `widget/StatusWidget.kt` | Home-screen widget |
 | `ui/MainActivity.kt` | Nav graph, share-intent → `new?url=`, theme, `formatTime` |
-| `ui/RecipeListScreen.kt` | List, export/import menu, `statusText` |
+| `ui/RecipeListScreen.kt` | List, export/import menu, `statusText`, hosts the assistant panel |
+| `ui/AssistantPanel.kt` | AI assistant panel (expanded/collapsed/hidden), suggestions → setup wizard (`new?url=&goal=`) |
 | `ui/NewRecipeScreen.kt` | Setup wizard (URL/goal → WebView picker → AI → review/save) |
 | `ui/RecipeDetailScreen.kt` | Data/events/log/settings tabs, CSV, repair with AI |
 | `ui/SettingsScreen.kt` | Provider, keys, model, budget, battery, updates, crash report |

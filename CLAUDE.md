@@ -9,8 +9,8 @@ it says which file does what, so you rarely need to read more than 1–2 files.
 - CI builds the APK on every push to `main` (`.github/workflows/android.yml`). Locally there is
   no Android SDK/AGP (dl.google.com is blocked in cloud sessions) — verify JVM modules locally,
   the app module in CI.
-- Every user-visible string goes to `app/src/main/res/values/strings.xml` (Russian, default) **and**
-  `values-en/strings.xml` (English). Lint fails on a missing translation.
+- User-visible strings: add them to `scripts/strings_source.py` (ru + en) and run it; it regenerates
+  `res/values{,-en}/strings.xml` and prints missing/unused keys. Don't edit the XML by hand.
 - Room schema change → bump `AppDatabase` version + add a `Migration` (see `MIGRATION_1_2`).
 - Recipe JSON (`engine/Model.kt`) is persisted and exported: add fields only with defaults.
 - New dependency used via reflection (Jackson etc.) → check `app/proguard-rules.pro` (R8 is on for release).

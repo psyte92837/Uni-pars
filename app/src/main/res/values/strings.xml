@@ -11,6 +11,21 @@
     <string name="action_run_now">Запустить сейчас</string>
     <string name="action_save">Сохранить</string>
     <string name="app_name" translatable="false">Uni-pars</string>
+    <string name="assistant_clear">Очистить диалог</string>
+    <string name="assistant_close">Закрыть помощника</string>
+    <string name="assistant_collapse">Свернуть помощника</string>
+    <string name="assistant_example_1">Квартиры в аренду до 40 000 ₽</string>
+    <string name="assistant_example_2">Вакансии Kotlin удалённо</string>
+    <string name="assistant_expand">Развернуть помощника</string>
+    <string name="assistant_found">Вот что удалось найти:</string>
+    <string name="assistant_goal">Что отслеживать: %1$s</string>
+    <string name="assistant_hint">Сайт или что ищете…</string>
+    <string name="assistant_intro">Введите адрес сайта или опишите, что ищете, — подскажу, где и что отслеживать, и запущу настройку. Можно спросить и о том, как пользоваться приложением.</string>
+    <string name="assistant_nothing">Подходящих сайтов не нашлось. Уточните запрос или введите адрес сайта.</string>
+    <string name="assistant_open">Открыть сайт</string>
+    <string name="assistant_send">Отправить</string>
+    <string name="assistant_setup">Настроить</string>
+    <string name="assistant_title">Помощник ИИ</string>
     <string name="channel_action">Требуется действие</string>
     <string name="channel_action_desc">Капча, проверка браузера, сломанный рецепт</string>
     <string name="channel_app">Приложение</string>
