@@ -45,7 +45,7 @@ class Repository(val db: AppDatabase) {
 
     /** Previous state for diffing; null before the first successful run (baseline). */
     suspend fun previousItems(entity: RecipeEntity): Map<String, Item>? =
-        if (!entity.baselineDone) null else db.items().active(entity.id).associate { it.key to it.item() }
+        if (!entity.baselineDone) null else db.items().active(entity.id, Int.MAX_VALUE).associate { it.key to it.item() }
 
     suspend fun storeRun(recipeId: String, items: List<Item>, removedKeys: List<String>, events: List<ChangeEvent>, now: Long) {
         db.withTransaction {

@@ -123,7 +123,7 @@ interface ItemDao {
     suspend fun all(recipeId: String): List<ItemEntity>
 
     @Query("SELECT * FROM items WHERE recipeId = :recipeId AND active = 1 LIMIT :limit")
-    suspend fun active(recipeId: String, limit: Int = 10_000): List<ItemEntity>
+    suspend fun active(recipeId: String, limit: Int): List<ItemEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(items: List<ItemEntity>)
