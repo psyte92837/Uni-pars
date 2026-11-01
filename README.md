@@ -5,7 +5,7 @@ Android-приложение для мониторинга сайтов. ИИ (�
 что и как парсить. После этого приложение собирает данные в фоне **без ИИ и без токенов** и
 присылает уведомления.
 
-Подробный дизайн: [docs/design.md](docs/design.md).
+Подробный дизайн: [docs/design.md](docs/design.md). Карта кода: [docs/CODEMAP.md](docs/CODEMAP.md).
 
 ## Как это работает
 
@@ -52,7 +52,7 @@ Android-приложение для мониторинга сайтов. ИИ (�
 
 ## Сборка
 
-APK собирает GitHub Actions (`.github/workflows/android.yml`) при каждом push. Готовые
+APK собирает GitHub Actions (`.github/workflows/android.yml`) при каждом push в `main`. Готовые
 `debug`- и `release`-APK лежат в артефактах запуска (Actions → запуск → Artifacts). Тег `v*`
 публикует APK в GitHub Release.
 
