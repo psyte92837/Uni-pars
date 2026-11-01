@@ -1,6 +1,9 @@
 package com.unipars.app.ui
 
 import android.app.Application
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -33,22 +37,27 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.unipars.ai.SetupResult
+import com.unipars.app.R
 import com.unipars.app.UniParsApp
 import com.unipars.app.data.RecipeStatus
+import com.unipars.app.data.Transfer
 import com.unipars.app.data.item
 import com.unipars.app.data.recipe
 import com.unipars.app.setup.SetupEngine
@@ -60,8 +69,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.DateFormat
-import java.util.Date
 
 data class RepairState(val running: Boolean = false, val result: SetupResult? = null, val error: String? = null)
 
@@ -94,6 +101,8 @@ class RecipeDetailViewModel(application: Application, handle: SavedStateHandle) 
         onDone()
     }
 
+    suspend fun csv(): String = Transfer.itemsCsv(app.db.items().active(id, Int.MAX_VALUE))
+
     /** Spends tokens only when the user presses the button. */
     fun startRepair() = viewModelScope.launch {
         repair.value = RepairState(running = true)
@@ -114,7 +123,7 @@ class RecipeDetailViewModel(application: Application, handle: SavedStateHandle) 
         val r = repair.value.result ?: return@launch
         app.repository.updateRecipe(r.recipe)
         val e = app.db.recipes().get(id) ?: return@launch
-        app.db.recipes().upsert(e.copy(status = RecipeStatus.ACTIVE, consecutiveFailures = 0, lastMessage = "Рецепт обновлён ИИ", bodyHash = null))
+        app.db.recipes().upsert(e.copy(status = RecipeStatus.ACTIVE, consecutiveFailures = 0, lastMessage = app.getString(R.string.msg_repaired), bodyHash = null))
         Scheduler.schedule(app, r.recipe)
         Scheduler.runNow(app, id)
         repair.value = RepairState()
@@ -125,35 +134,38 @@ class RecipeDetailViewModel(application: Application, handle: SavedStateHandle) 
     }
 }
 
-fun statusText(status: RecipeStatus, enabled: Boolean): String = when {
-    !enabled -> "Пауза"
-    status == RecipeStatus.ACTIVE -> "Работает"
-    status == RecipeStatus.NEEDS_HUMAN -> "Нужна проверка"
-    status == RecipeStatus.BROKEN -> "Сломан"
-    else -> "Ошибка"
-}
-
-fun formatTime(ts: Long?): String = ts?.let { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(it)) } ?: "—"
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecipeDetailScreen(onBack: () -> Unit, onCheck: (String) -> Unit, vm: RecipeDetailViewModel = viewModel()) {
-    val entity by vm.recipe.collectAsState(initial = null)
-    val itemList by vm.items.collectAsState(initial = emptyList())
-    val events by vm.events.collectAsState(initial = emptyList())
-    val runs by vm.runs.collectAsState(initial = emptyList())
-    val repair by vm.repair.collectAsState()
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val entity by vm.recipe.collectAsStateWithLifecycle(initialValue = null)
+    val itemList by vm.items.collectAsStateWithLifecycle(initialValue = emptyList())
+    val events by vm.events.collectAsStateWithLifecycle(initialValue = emptyList())
+    val runs by vm.runs.collectAsStateWithLifecycle(initialValue = emptyList())
+    val repair by vm.repair.collectAsStateWithLifecycle()
     var tab by remember { mutableIntStateOf(0) }
     var confirmDelete by remember { mutableStateOf(false) }
     val e = entity
 
+    val csvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching { ctx.contentResolver.openOutputStream(uri)!!.use { it.write(vm.csv().toByteArray()) } }.isSuccess
+            }
+            Toast.makeText(ctx, if (ok) R.string.export_done else R.string.export_failed, Toast.LENGTH_SHORT).show()
+        }
+    }
+
     Scaffold(topBar = {
         TopAppBar(
             title = { Text(e?.name ?: "", maxLines = 1) },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад") } },
+            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back)) } },
             actions = {
-                IconButton(onClick = vm::runNow) { Icon(Icons.Default.PlayArrow, contentDescription = "Запустить сейчас") }
-                IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, contentDescription = "Удалить") }
+                IconButton(onClick = vm::runNow) { Icon(Icons.Default.PlayArrow, contentDescription = stringResource(R.string.action_run_now)) }
+                IconButton(onClick = { csvLauncher.launch("${e?.domain ?: "data"}.csv") }) { Icon(Icons.Default.Share, contentDescription = stringResource(R.string.action_export_csv)) }
+                IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.action_delete)) }
             },
         )
     }) { padding ->
@@ -165,19 +177,18 @@ fun RecipeDetailScreen(onBack: () -> Unit, onCheck: (String) -> Unit, vm: Recipe
                     Text(statusText(e.status, e.enabled), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                     Switch(checked = e.enabled, onCheckedChange = { vm.setEnabled(it) })
                 }
-                Text("Последний запуск: ${formatTime(e.lastRunAt)} · записей: ${e.itemCount}", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.detail_last_run, formatTime(e.lastRunAt), e.itemCount), style = MaterialTheme.typography.bodySmall)
                 e.lastMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 if (e.status == RecipeStatus.NEEDS_HUMAN) {
-                    Button(onClick = { onCheck(e.id) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("Пройти проверку на ${e.domain}") }
+                    Button(onClick = { onCheck(e.id) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text(stringResource(R.string.detail_pass_check, e.domain)) }
                 }
                 if (e.status == RecipeStatus.BROKEN) {
-                    Button(onClick = vm::startRepair, enabled = !repair.running, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("Починить с ИИ") }
+                    Button(onClick = { vm.startRepair() }, enabled = !repair.running, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text(stringResource(R.string.detail_repair)) }
                 }
             }
+            val tabs = listOf(R.string.tab_data, R.string.tab_events, R.string.tab_log, R.string.tab_settings)
             TabRow(selectedTabIndex = tab) {
-                listOf("Данные", "События", "Журнал", "Настройки").forEachIndexed { i, t ->
-                    Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) })
-                }
+                tabs.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(stringResource(t)) }) }
             }
             when (tab) {
                 0 -> LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
@@ -193,10 +204,14 @@ fun RecipeDetailScreen(onBack: () -> Unit, onCheck: (String) -> Unit, vm: Recipe
                 }
                 2 -> LazyColumn(Modifier.fillMaxSize().padding(12.dp)) {
                     items(runs, key = { it.id }) { r ->
-                        Text("${formatTime(r.ts)} · ${r.outcome} · ${r.durationMs} мс · ${r.items}" + (r.message?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 4.dp))
+                        Text(
+                            "${formatTime(r.ts)} · ${r.outcome} · ${r.durationMs} ms · ${r.items}" + (r.message?.let { " · $it" } ?: ""),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(vertical = 4.dp),
+                        )
                     }
                 }
-                else -> if (recipe != null) RecipeSettingsTab(recipe, onSave = vm::save, onCheck = { onCheck(e.id) }, onRepair = vm::startRepair)
+                else -> if (recipe != null) RecipeSettingsTab(recipe, onSave = { vm.save(it) }, onCheck = { onCheck(e.id) }, onRepair = { vm.startRepair() })
             }
         }
     }
@@ -204,32 +219,39 @@ fun RecipeDetailScreen(onBack: () -> Unit, onCheck: (String) -> Unit, vm: Recipe
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Удалить рецепт?") },
-            text = { Text("Будут удалены рецепт, собранные данные и история.") },
-            confirmButton = { TextButton(onClick = { confirmDelete = false; vm.delete(onBack) }) { Text("Удалить") } },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Отмена") } },
+            title = { Text(stringResource(R.string.delete_title)) },
+            text = { Text(stringResource(R.string.delete_text)) },
+            confirmButton = { TextButton(onClick = { confirmDelete = false; vm.delete(onBack) }) { Text(stringResource(R.string.action_delete)) } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.action_cancel)) } },
         )
     }
     if (repair.running) {
-        AlertDialog(onDismissRequest = {}, confirmButton = {}, title = { Text("ИИ чинит рецепт…") }, text = { CircularProgressIndicator() })
+        AlertDialog(onDismissRequest = {}, confirmButton = {}, title = { Text(stringResource(R.string.repair_running)) }, text = { CircularProgressIndicator() })
     }
     repair.error?.let { err ->
-        AlertDialog(onDismissRequest = vm::dismissRepair, confirmButton = { TextButton(onClick = vm::dismissRepair) { Text("OK") } }, title = { Text("Не получилось") }, text = { Text(err) })
+        AlertDialog(
+            onDismissRequest = vm::dismissRepair,
+            confirmButton = { TextButton(onClick = vm::dismissRepair) { Text(stringResource(R.string.action_ok)) } },
+            title = { Text(stringResource(R.string.repair_failed)) },
+            text = { Text(err) },
+        )
     }
     repair.result?.let { r ->
         AlertDialog(
             onDismissRequest = vm::dismissRepair,
-            title = { Text(if (r.validationProblem == null) "Новый рецепт работает" else "Рецепт всё ещё с ошибками") },
+            title = { Text(stringResource(if (r.validationProblem == null) R.string.repair_ok else R.string.repair_still_broken)) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
+                    r.foreignSource?.let { WarningCard(stringResource(R.string.new_foreign, it)) }
                     r.validationProblem?.let { WarningCard(it) }
                     Text(r.explanation, style = MaterialTheme.typography.bodySmall)
                     Spacer(Modifier.height(8.dp))
                     r.preview.take(5).forEach { ItemCard(it) }
                 }
             },
-            confirmButton = { TextButton(onClick = vm::applyRepair) { Text("Применить") } },
-            dismissButton = { TextButton(onClick = vm::dismissRepair) { Text("Отмена") } },
+            // A repair that moves the source to another site is not applied silently.
+            confirmButton = { TextButton(onClick = { vm.applyRepair() }, enabled = r.foreignSource == null) { Text(stringResource(R.string.action_apply)) } },
+            dismissButton = { TextButton(onClick = vm::dismissRepair) { Text(stringResource(R.string.action_cancel)) } },
         )
     }
 }
@@ -238,17 +260,20 @@ fun RecipeDetailScreen(onBack: () -> Unit, onCheck: (String) -> Unit, vm: Recipe
 private fun RecipeSettingsTab(recipe: Recipe, onSave: (Recipe) -> Unit, onCheck: () -> Unit, onRepair: () -> Unit) {
     var draft by remember(recipe) { mutableStateOf(recipe) }
     Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
-        Text("Источник: ${recipe.source.url}", style = MaterialTheme.typography.bodySmall)
-        Text("Режим: ${recipe.source.mode.name.lowercase()}, ${recipe.extract.type.name.lowercase()}, поля: ${recipe.extract.fields.joinToString { it.name }}", style = MaterialTheme.typography.bodySmall)
-        SectionTitle("Уведомлять, когда")
+        Text(stringResource(R.string.detail_source, recipe.source.url), style = MaterialTheme.typography.bodySmall)
+        Text(
+            stringResource(R.string.detail_mode, recipe.source.mode.name.lowercase(), recipe.extract.type.name.lowercase(), recipe.extract.fields.joinToString { it.name }),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        SectionTitle(stringResource(R.string.section_triggers))
         TriggersEditor(draft.triggers, draft.extract.fields.map { it.name }) { t: List<Trigger> -> draft = draft.copy(triggers = t) }
-        SectionTitle("Параметры")
+        SectionTitle(stringResource(R.string.section_params))
         SettingsEditor(draft.settings) { s: FetchSettings -> draft = draft.copy(settings = s) }
         Spacer(Modifier.height(12.dp))
-        Button(onClick = { onSave(draft) }, enabled = draft != recipe, modifier = Modifier.fillMaxWidth()) { Text("Сохранить") }
+        Button(onClick = { onSave(draft) }, enabled = draft != recipe, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.action_save)) }
         Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onCheck, modifier = Modifier.weight(1f)) { Text("Открыть сайт / вход") }
-            OutlinedButton(onClick = onRepair, modifier = Modifier.weight(1f)) { Text("Перенастроить с ИИ") }
+            OutlinedButton(onClick = onCheck, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.detail_open_site)) }
+            OutlinedButton(onClick = onRepair, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.detail_reconfigure)) }
         }
         Spacer(Modifier.height(32.dp))
     }

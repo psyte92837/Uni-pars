@@ -6,16 +6,21 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// Tag builds (v1.2.3) get that version; other CI builds are 0.0.<run>-dev.
+val runNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
+val tagVersion = System.getenv("GITHUB_REF_NAME")?.takeIf { System.getenv("GITHUB_REF_TYPE") == "tag" }?.removePrefix("v")
+
 android {
     namespace = "com.unipars.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.unipars.app"
         minSdk = 26
-        targetSdk = 35
-        versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
-        versionName = "0.1.${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}"
+        targetSdk = 36
+        versionCode = runNumber
+        versionName = tagVersion ?: "0.0.$runNumber-dev"
+        buildConfigField("String", "UPDATE_REPO", "\"psyte92837/Uni-pars\"")
     }
 
     signingConfigs {
@@ -33,8 +38,9 @@ android {
 
     buildTypes {
         release {
-            // Jackson/Anthropic SDK rely on reflection; keep R8 off until keep rules are tuned.
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
@@ -45,7 +51,21 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+
+    lint {
+        abortOnError = true
+        warningsAsErrors = false
+        checkReleaseBuilds = false
+        htmlReport = true
+    }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
 
     packaging {
         resources {
@@ -85,9 +105,14 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.work.runtime.ktx)
-    implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.webkit)
 
     implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.android)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.work.testing)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

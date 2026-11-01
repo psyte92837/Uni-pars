@@ -13,6 +13,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.withTransaction
 import androidx.room.Upsert
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 enum class RecipeStatus {
@@ -49,6 +51,9 @@ data class RecipeEntity(
     val baselineDone: Boolean = false,
     val requestsDay: String? = null,
     val requestsToday: Int = 0,
+    /** Re-checked periodically by the maintenance worker; null = unknown. */
+    val robotsAllowed: Boolean? = null,
+    val robotsCheckedAt: Long? = null,
 )
 
 @Entity(tableName = "items", primaryKeys = ["recipeId", "key"])
@@ -107,6 +112,9 @@ interface RecipeDao {
     @Query("SELECT * FROM recipes")
     suspend fun all(): List<RecipeEntity>
 
+    @Query("SELECT * FROM recipes WHERE domain = :domain")
+    suspend fun byDomain(domain: String): List<RecipeEntity>
+
     @Upsert
     suspend fun upsert(recipe: RecipeEntity)
 
@@ -133,6 +141,9 @@ interface ItemDao {
 
     @Query("DELETE FROM items WHERE recipeId = :recipeId")
     suspend fun deleteFor(recipeId: String)
+
+    @Query("DELETE FROM items WHERE active = 0 AND lastSeen < :before")
+    suspend fun deleteInactiveBefore(before: Long): Int
 }
 
 @Dao
@@ -151,6 +162,9 @@ interface EventDao {
 
     @Query("DELETE FROM events WHERE recipeId = :recipeId")
     suspend fun deleteFor(recipeId: String)
+
+    @Query("DELETE FROM events WHERE ts < :before AND notified = 1")
+    suspend fun deleteBefore(before: Long): Int
 }
 
 @Dao
@@ -179,7 +193,7 @@ interface ProfileDao {
 
 @Database(
     entities = [RecipeEntity::class, ItemEntity::class, EventEntity::class, RunEntity::class, ProfileEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -197,7 +211,16 @@ abstract class AppDatabase : RoomDatabase() {
     }
 
     companion object {
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE recipes ADD COLUMN robotsAllowed INTEGER")
+                db.execSQL("ALTER TABLE recipes ADD COLUMN robotsCheckedAt INTEGER")
+            }
+        }
+
         fun create(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "unipars.db").build()
+            Room.databaseBuilder(context, AppDatabase::class.java, "unipars.db")
+                .addMigrations(MIGRATION_1_2)
+                .build()
     }
 }

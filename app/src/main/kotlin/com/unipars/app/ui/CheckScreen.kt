@@ -23,7 +23,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.unipars.app.R
 import com.unipars.app.UniParsApp
 import com.unipars.app.data.RecipeEntity
 import com.unipars.app.data.RecipeStatus
@@ -40,7 +42,8 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CheckScreen(recipeId: String, onDone: () -> Unit) {
-    val app = LocalContext.current.applicationContext as UniParsApp
+    val ctx = LocalContext.current
+    val app = ctx.applicationContext as UniParsApp
     val scope = rememberCoroutineScope()
     var entity by remember { mutableStateOf<RecipeEntity?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -49,18 +52,14 @@ fun CheckScreen(recipeId: String, onDone: () -> Unit) {
 
     Scaffold(topBar = {
         TopAppBar(
-            title = { Text("Проверка: ${entity?.domain ?: ""}") },
-            navigationIcon = { IconButton(onClick = onDone) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад") } },
+            title = { Text(stringResource(R.string.check_title, entity?.domain ?: "")) },
+            navigationIcon = { IconButton(onClick = onDone) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back)) } },
         )
     }) { padding ->
         val e = entity ?: return@Scaffold
         val url = remember(e.json) { runCatching { e.recipe().source.url }.getOrDefault("https://${e.domain}") }
         Column(Modifier.padding(padding).fillMaxSize()) {
-            Text(
-                "Пройдите проверку или войдите на сайт, затем нажмите «Готово». Приложение не решает капчи само.",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(12.dp),
-            )
+            Text(stringResource(R.string.check_explain), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
             message?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 12.dp)) }
             Button(
                 onClick = {
@@ -69,18 +68,18 @@ fun CheckScreen(recipeId: String, onDone: () -> Unit) {
                         if (verdict.kind == BlockKind.NONE || verdict.kind == BlockKind.FORBIDDEN) {
                             scope.launch {
                                 val fresh = app.db.recipes().get(recipeId) ?: return@launch
-                                app.db.recipes().upsert(fresh.copy(status = RecipeStatus.ACTIVE, consecutiveFailures = 0, lastMessage = "Проверка пройдена"))
+                                app.db.recipes().upsert(fresh.copy(status = RecipeStatus.ACTIVE, consecutiveFailures = 0, lastMessage = ctx.getString(R.string.msg_check_passed)))
                                 app.notifier.cancelCheck(fresh.domain)
                                 Scheduler.runNow(app, recipeId)
                                 onDone()
                             }
                         } else {
-                            message = "Похоже, проверка ещё не пройдена (${verdict.vendor ?: verdict.kind.name.lowercase()})."
+                            message = ctx.getString(R.string.check_not_passed, verdict.vendor ?: verdict.kind.name.lowercase())
                         }
                     }
                 },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-            ) { Text("Готово") }
+            ) { Text(stringResource(R.string.check_done)) }
             PageWebView(url = url, controller = controller, instrument = false, modifier = Modifier.fillMaxSize().padding(top = 8.dp))
         }
     }

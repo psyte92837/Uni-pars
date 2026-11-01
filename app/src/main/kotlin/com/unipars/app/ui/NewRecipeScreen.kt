@@ -18,6 +18,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -30,21 +31,26 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.unipars.ai.AiUsage
 import com.unipars.ai.PickedElement
 import com.unipars.ai.SetupResult
+import com.unipars.app.R
 import com.unipars.app.UniParsApp
 import com.unipars.app.setup.PageCapture
 import com.unipars.app.setup.SetupEngine
@@ -54,6 +60,7 @@ import com.unipars.engine.FetchSettings
 import com.unipars.engine.Item
 import com.unipars.engine.ProbeFacts
 import com.unipars.engine.Recipe
+import com.unipars.engine.Safety
 import com.unipars.engine.Trigger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -70,19 +77,21 @@ data class NewRecipeState(
     val goal: String = "",
     val picked: List<PickedElement> = emptyList(),
     val xhr: Map<String, String> = emptyMap(),
-    val progress: String = "",
+    val progress: Int = 0,
     val error: String? = null,
     val result: SetupResult? = null,
     val facts: ProbeFacts? = null,
     val recipe: Recipe? = null,
     val usage: AiUsage = AiUsage(),
+    val costUsd: Double? = null,
+    val foreignConfirmed: Boolean = false,
     val saved: Boolean = false,
 )
 
-class NewRecipeViewModel(application: Application) : AndroidViewModel(application) {
+class NewRecipeViewModel(application: Application, handle: SavedStateHandle) : AndroidViewModel(application) {
     private val app = application as UniParsApp
     private val engine = SetupEngine(application)
-    val state = MutableStateFlow(NewRecipeState())
+    val state = MutableStateFlow(NewRecipeState(url = handle.get<String>("url").orEmpty()))
 
     fun setUrl(v: String) = state.update { it.copy(url = v) }
     fun setGoal(v: String) = state.update { it.copy(goal = v) }
@@ -99,38 +108,47 @@ class NewRecipeViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    // Everything arriving through the JS bridge is untrusted page content: size-limited here.
     fun onPick(path: String, html: String) = state.update { s ->
-        if (s.picked.any { it.cssPath == path }) s else s.copy(picked = s.picked + PickedElement(path, html))
+        if (s.picked.size >= 20 || s.picked.any { it.cssPath == path }) s
+        else s.copy(picked = s.picked + PickedElement(Safety.clip(path, 500), Safety.clip(html, 3_000)))
     }
 
     fun clearPicked() = state.update { it.copy(picked = emptyList()) }
 
     fun onJson(url: String, body: String) = state.update { s ->
-        if (s.xhr.size >= 30 || url in s.xhr) s else s.copy(xhr = s.xhr + (url to body))
+        if (s.xhr.size >= 30 || url in s.xhr) s
+        else s.copy(xhr = s.xhr + (Safety.clip(url, 1_000) to Safety.maskPersonalData(Safety.clip(body, 6_000))))
     }
 
     fun analyze(renderedHtml: String?, currentUrl: String?) {
         val s = state.value
         if (s.goal.isBlank()) {
-            state.update { it.copy(error = "Опишите, что нужно отслеживать") }
+            state.update { it.copy(error = app.getString(R.string.err_goal_empty)) }
             return
         }
         val capture = PageCapture(currentUrl ?: s.url, renderedHtml, s.xhr, s.picked)
-        state.update { it.copy(step = SetupStep.WORKING, error = null, progress = "Проверяю сайт (без ИИ)…") }
+        state.update { it.copy(step = SetupStep.WORKING, error = null, progress = R.string.progress_probe) }
         viewModelScope.launch {
             try {
-                val result = withContext(Dispatchers.IO) {
+                val (result, usage) = withContext(Dispatchers.IO) {
                     val client = engine.client()
                     val probe = engine.probe(capture)
-                    state.update { it.copy(facts = probe.facts, progress = "Ищу сведения о сайте…") }
+                    state.update { it.copy(facts = probe.facts, progress = R.string.progress_research) }
                     val (research, researchUsage) = engine.research(client, capture.url, s.goal, probe.facts)
-                    state.update { it.copy(progress = "ИИ составляет рецепт и проверяет его на странице…") }
+                    state.update { it.copy(progress = R.string.progress_ai) }
                     val input = engine.buildInput(capture, s.goal, probe, research)
                     val r = engine.create(client, UUID.randomUUID().toString(), input, capture, probe)
-                    engine.addUsage(r.usage + researchUsage)
-                    r to (r.usage + researchUsage)
+                    val total = r.usage + researchUsage
+                    engine.addUsage(total)
+                    r to total
                 }
-                state.update { it.copy(step = SetupStep.RESULT, result = result.first, recipe = result.first.recipe, usage = result.second) }
+                state.update {
+                    it.copy(
+                        step = SetupStep.RESULT, result = result, recipe = result.recipe, usage = usage,
+                        costUsd = engine.estimateUsd(usage), foreignConfirmed = false,
+                    )
+                }
             } catch (e: Exception) {
                 state.update { it.copy(step = SetupStep.PAGE, error = e.message ?: e.toString()) }
             }
@@ -139,10 +157,13 @@ class NewRecipeViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun editRecipe(transform: (Recipe) -> Recipe) = state.update { s -> s.copy(recipe = s.recipe?.let(transform)) }
 
+    fun confirmForeign(v: Boolean) = state.update { it.copy(foreignConfirmed = v) }
+
     fun save() {
         val s = state.value
         val recipe = s.recipe ?: return
         val result = s.result ?: return
+        if (result.foreignSource != null && !s.foreignConfirmed) return
         viewModelScope.launch {
             val profile = s.facts?.let { engine.profile(recipe.source.url, it, result) }
             app.repository.saveNewRecipe(recipe, profile)
@@ -156,15 +177,30 @@ class NewRecipeViewModel(application: Application) : AndroidViewModel(applicatio
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NewRecipeScreen(onDone: () -> Unit, vm: NewRecipeViewModel = viewModel()) {
-    val s by vm.state.collectAsState()
-    androidx.compose.runtime.LaunchedEffect(s.saved) { if (s.saved) onDone() }
+    val s by vm.state.collectAsStateWithLifecycle()
+    val requestNotifications = rememberNotificationPermissionRequest()
+    LaunchedEffect(s.saved) {
+        if (s.saved) {
+            // Ask for notifications in context: right after the first recipe that will send them.
+            requestNotifications()
+            onDone()
+        }
+    }
     val controller = remember { PageController() }
+    val title = stringResource(
+        when (s.step) {
+            SetupStep.INPUT -> R.string.new_title_input
+            SetupStep.PAGE -> R.string.new_title_page
+            SetupStep.WORKING -> R.string.new_title_working
+            SetupStep.RESULT -> R.string.new_title_result
+        },
+    )
     Scaffold(topBar = {
         TopAppBar(
-            title = { Text(when (s.step) { SetupStep.INPUT -> "Новый рецепт"; SetupStep.PAGE -> "Покажите, что парсить"; SetupStep.WORKING -> "Анализ"; SetupStep.RESULT -> "Проверьте рецепт" }) },
+            title = { Text(title) },
             navigationIcon = {
                 IconButton(onClick = { if (s.step == SetupStep.INPUT) onDone() else vm.back() }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                 }
             },
         )
@@ -176,7 +212,7 @@ fun NewRecipeScreen(onDone: () -> Unit, vm: NewRecipeViewModel = viewModel()) {
                 SetupStep.WORKING -> Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator()
                     Spacer(Modifier.height(16.dp))
-                    Text(s.progress)
+                    if (s.progress != 0) Text(stringResource(s.progress))
                 }
                 SetupStep.RESULT -> ResultStep(s, vm)
             }
@@ -188,38 +224,35 @@ fun NewRecipeScreen(onDone: () -> Unit, vm: NewRecipeViewModel = viewModel()) {
 private fun InputStep(s: NewRecipeState, vm: NewRecipeViewModel) {
     Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         OutlinedTextField(
-            value = s.url, onValueChange = vm::setUrl, label = { Text("Адрес страницы") }, singleLine = true,
+            value = s.url, onValueChange = vm::setUrl, label = { Text(stringResource(R.string.new_url)) }, singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(
             value = s.goal, onValueChange = vm::setGoal, minLines = 3,
-            label = { Text("Что отслеживать") },
-            placeholder = { Text("Например: название, цена и ссылка каждого товара; сообщить, если цена ниже 50 000") },
+            label = { Text(stringResource(R.string.new_goal)) },
+            placeholder = { Text(stringResource(R.string.new_goal_hint)) },
             modifier = Modifier.fillMaxWidth(),
         )
-        Text(
-            "На следующем шаге страница откроется во встроенном браузере. Нажмите «Выбор элементов» и коснитесь нужных блоков — так ИИ точнее поймёт задачу. Токены тратятся только на этом этапе; дальше сбор идёт без ИИ.",
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Button(onClick = vm::openPage, enabled = s.url.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Открыть страницу") }
+        Text(stringResource(R.string.new_explain), style = MaterialTheme.typography.bodySmall)
+        Button(onClick = vm::openPage, enabled = s.url.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.new_open)) }
     }
 }
 
 @Composable
 private fun PageStep(s: NewRecipeState, vm: NewRecipeViewModel, controller: PageController) {
-    var pickMode by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var pickMode by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = pickMode, onClick = { pickMode = !pickMode; controller.setPickMode(pickMode) }, label = { Text("Выбор элементов") })
+            FilterChip(selected = pickMode, onClick = { pickMode = !pickMode; controller.setPickMode(pickMode) }, label = { Text(stringResource(R.string.new_pick)) })
             if (s.picked.isNotEmpty()) {
-                FilterChip(selected = true, onClick = vm::clearPicked, label = { Text("Выбрано: ${s.picked.size} ✕") })
+                FilterChip(selected = true, onClick = vm::clearPicked, label = { Text(stringResource(R.string.new_picked, s.picked.size)) })
             }
             Spacer(Modifier.weight(1f))
-            Button(onClick = { controller.captureHtml { html, url -> vm.analyze(html, url) } }) { Text("Анализировать") }
+            Button(onClick = { controller.captureHtml { html, url -> vm.analyze(html, url) } }) { Text(stringResource(R.string.new_analyze)) }
         }
         s.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(8.dp)) }
         if (s.xhr.isNotEmpty()) {
-            Text("Найдено JSON-ответов: ${s.xhr.size}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 8.dp))
+            Text(stringResource(R.string.new_json_found, s.xhr.size), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 8.dp))
         }
         PageWebView(
             url = s.url,
@@ -237,38 +270,54 @@ private fun ResultStep(s: NewRecipeState, vm: NewRecipeViewModel) {
     val result = s.result ?: return
     val recipe = s.recipe ?: return
     Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
-        OutlinedTextField(value = recipe.name, onValueChange = { n -> vm.editRecipe { it.copy(name = n) } }, label = { Text("Название") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = recipe.name, onValueChange = { n -> vm.editRecipe { it.copy(name = n) } }, label = { Text(stringResource(R.string.new_name)) }, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
         Text(result.explanation, style = MaterialTheme.typography.bodyMedium)
+        val cost = s.costUsd?.let { "≈ $" + "%.4f".format(it) } ?: "—"
         Text(
-            "Способ: ${recipe.source.mode.name.lowercase()}, ${recipe.extract.type.name.lowercase()} · попыток ИИ: ${result.attempts} · токены: ${s.usage.inputTokens}/${s.usage.outputTokens}",
+            stringResource(R.string.new_stats, recipe.source.mode.name.lowercase(), recipe.extract.type.name.lowercase(), result.attempts, s.usage.inputTokens, s.usage.outputTokens, cost),
             style = MaterialTheme.typography.bodySmall,
         )
-        result.validationProblem?.let {
-            WarningCard("Рецепт не прошёл проверку на странице: $it. Можно сохранить, но вероятно он не будет работать — лучше выбрать элементы точнее и повторить анализ.")
+        result.foreignSource?.let { foreign ->
+            WarningCard(stringResource(R.string.new_foreign, foreign))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = s.foreignConfirmed, onCheckedChange = vm::confirmForeign)
+                Text(stringResource(R.string.new_foreign_confirm), style = MaterialTheme.typography.bodySmall)
+            }
         }
+        result.validationProblem?.let { WarningCard(stringResource(R.string.new_validation, it)) }
         result.warnings.forEach { WarningCard(it) }
 
-        SectionTitle("Что извлечено (${result.preview.size})")
-        if (result.preview.isEmpty()) Text("Ничего не найдено")
+        SectionTitle(stringResource(R.string.new_preview, result.preview.size))
+        if (result.preview.isEmpty()) Text(stringResource(R.string.new_preview_empty))
         result.preview.take(10).forEach { ItemCard(it) }
 
-        SectionTitle("О сайте")
+        SectionTitle(stringResource(R.string.new_about_site))
         result.notes.forEach { n ->
-            val badge = when (n.confidence) { Confidence.MEASURED -> "измерено"; Confidence.SOURCED -> "источник"; Confidence.ASSUMED -> "предположение ИИ" }
+            val badge = stringResource(
+                when (n.confidence) {
+                    Confidence.MEASURED -> R.string.conf_measured
+                    Confidence.SOURCED -> R.string.conf_sourced
+                    Confidence.ASSUMED -> R.string.conf_assumed
+                },
+            )
             Text("• [$badge] ${n.text}" + (n.source?.let { " ($it)" } ?: ""), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 2.dp))
         }
 
-        SectionTitle("Уведомлять, когда")
+        SectionTitle(stringResource(R.string.section_triggers))
         TriggersEditor(recipe.triggers, recipe.extract.fields.map { it.name }) { t: List<Trigger> -> vm.editRecipe { it.copy(triggers = t) } }
 
-        SectionTitle("Настройки (рекомендованы, можно менять)")
+        SectionTitle(stringResource(R.string.new_settings))
         SettingsEditor(recipe.settings) { st: FetchSettings -> vm.editRecipe { it.copy(settings = st) } }
 
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = vm::back, modifier = Modifier.weight(1f)) { Text("Назад к странице") }
-            Button(onClick = vm::save, modifier = Modifier.weight(1f)) { Text("Сохранить и запустить") }
+            OutlinedButton(onClick = vm::back, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.new_back_to_page)) }
+            Button(
+                onClick = vm::save,
+                enabled = result.foreignSource == null || s.foreignConfirmed,
+                modifier = Modifier.weight(1f),
+            ) { Text(stringResource(R.string.new_save)) }
         }
         Spacer(Modifier.height(32.dp))
     }

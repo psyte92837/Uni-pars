@@ -3,7 +3,8 @@ package com.unipars.app.setup
 import android.content.Context
 import com.unipars.ai.AiClient
 import com.unipars.ai.AiUsage
-import com.unipars.ai.ClaudeClient
+import com.unipars.ai.Pricing
+import com.unipars.app.R
 import com.unipars.ai.PickedElement
 import com.unipars.ai.SetupAssistant
 import com.unipars.ai.SetupInput
@@ -47,11 +48,22 @@ class SetupEngine(private val context: Context) {
     private val http = HttpFetcher(context)
     private val probeSettings = FetchSettings(connectTimeoutSec = 15, readTimeoutSec = 30, retries = 0)
 
+    val provider get() = app.prefs.provider
+    val model get() = app.prefs.model(provider)
+
+    /** Throws with a user-facing message if there is no key or the monthly budget is used up. */
     fun client(): AiClient {
-        val key = app.prefs.apiKey
-        require(key.isNotBlank()) { "Укажите API-ключ в настройках" }
-        return ClaudeClient(key, app.prefs.model, app.prefs.effort)
+        val key = app.prefs.apiKey(provider)
+        require(key.isNotBlank()) { app.getString(R.string.err_no_key, provider.title) }
+        val limit = app.prefs.monthlyLimitUsd
+        require(limit <= 0 || app.prefs.spentThisMonthUsd < limit) {
+            app.getString(R.string.err_budget, "%.2f".format(app.prefs.spentThisMonthUsd), "%.2f".format(limit))
+        }
+        return provider.create(key, model, app.prefs.effort)
     }
+
+    /** Approximate cost in USD, or null for models without a known price. */
+    fun estimateUsd(usage: AiUsage): Double? = Pricing.estimateUsd(model, usage)
 
     /** Blocking. */
     fun probe(capture: PageCapture): ProbeResult {
@@ -143,5 +155,6 @@ class SetupEngine(private val context: Context) {
     fun addUsage(usage: AiUsage) {
         app.prefs.spentInputTokens += usage.inputTokens
         app.prefs.spentOutputTokens += usage.outputTokens
+        estimateUsd(usage)?.let { app.prefs.addSpend(it) }
     }
 }
