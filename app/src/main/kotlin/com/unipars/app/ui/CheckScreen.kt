@@ -7,13 +7,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,6 +27,7 @@ import com.unipars.app.UniParsApp
 import com.unipars.app.data.RecipeEntity
 import com.unipars.app.data.RecipeStatus
 import com.unipars.app.data.recipe
+import com.unipars.app.ui.theme.AppScaffold
 import com.unipars.app.work.Scheduler
 import com.unipars.engine.BlockDetector
 import com.unipars.engine.BlockKind
@@ -39,7 +37,6 @@ import kotlinx.coroutines.launch
  * Human-in-the-loop: the user passes a captcha / browser check (or logs in) in a WebView.
  * Cookies are shared with background HTTP requests, so collection resumes afterwards.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CheckScreen(recipeId: String, onDone: () -> Unit) {
     val ctx = LocalContext.current
@@ -50,13 +47,11 @@ fun CheckScreen(recipeId: String, onDone: () -> Unit) {
     val controller = remember { PageController() }
     LaunchedEffect(recipeId) { entity = app.db.recipes().get(recipeId) }
 
-    Scaffold(topBar = {
-        TopAppBar(
-            title = { Text(stringResource(R.string.check_title, entity?.domain ?: "")) },
-            navigationIcon = { IconButton(onClick = onDone) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back)) } },
-        )
-    }) { padding ->
-        val e = entity ?: return@Scaffold
+    AppScaffold(
+        title = stringResource(R.string.check_title, entity?.domain ?: ""),
+        navigationIcon = { IconButton(onClick = onDone) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back)) } },
+    ) { padding ->
+        val e = entity ?: return@AppScaffold
         val url = remember(e.json) { runCatching { e.recipe().source.url }.getOrDefault("https://${e.domain}") }
         Column(Modifier.padding(padding).fillMaxSize()) {
             Text(stringResource(R.string.check_explain), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))

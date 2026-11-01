@@ -2,23 +2,19 @@ package com.unipars.app.ui
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.unipars.app.UniParsApp
+import com.unipars.app.ui.theme.UniParsTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -34,15 +30,18 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // Gradient headers are dark enough for light status-bar icons in both themes.
+        enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         if (savedInstanceState == null) pendingRoute = routeFrom(intent)
+        val app = application as UniParsApp
         setContent {
-            AppTheme {
+            val theme by app.theme.collectAsStateWithLifecycle()
+            UniParsTheme(theme) {
                 val nav = rememberNavController()
                 LaunchedEffect(pendingRoute) {
                     pendingRoute?.let { nav.navigate(it); pendingRoute = null }
                 }
-                AppNavHost(nav)
+                AppNavHost(nav, startDestination = if (app.prefs.onboardingDone) "list" else "onboarding")
             }
         }
     }
@@ -71,20 +70,15 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AppTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
-    val ctx = LocalContext.current
-    val scheme = when {
-        Build.VERSION.SDK_INT >= 31 -> if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
-        dark -> darkColorScheme()
-        else -> lightColorScheme()
-    }
-    MaterialTheme(colorScheme = scheme, content = content)
-}
-
-@Composable
-fun AppNavHost(nav: NavHostController) {
-    NavHost(nav, startDestination = "list") {
+fun AppNavHost(nav: NavHostController, startDestination: String = "list") {
+    NavHost(nav, startDestination = startDestination) {
+        composable("onboarding") {
+            OnboardingScreen(onFinish = {
+                // First run: replace onboarding with the list; re-run from Settings: just go back.
+                if (nav.previousBackStackEntry != null) nav.popBackStack()
+                else nav.navigate("list") { popUpTo("onboarding") { inclusive = true } }
+            })
+        }
         composable("list") {
             RecipeListScreen(
                 onOpen = { nav.navigate("recipe/$it") },
@@ -102,7 +96,7 @@ fun AppNavHost(nav: NavHostController) {
         ) {
             NewRecipeScreen(onDone = { nav.popBackStack() })
         }
-        composable("settings") { SettingsScreen(onBack = { nav.popBackStack() }) }
+        composable("settings") { SettingsScreen(onBack = { nav.popBackStack() }, onRerunSetup = { nav.navigate("onboarding") }) }
         composable("recipe/{id}") {
             RecipeDetailScreen(onBack = { nav.popBackStack() }, onCheck = { nav.navigate("check/$it") })
         }

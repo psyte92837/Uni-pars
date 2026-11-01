@@ -24,18 +24,15 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -61,6 +58,10 @@ import com.unipars.app.data.Transfer
 import com.unipars.app.data.item
 import com.unipars.app.data.recipe
 import com.unipars.app.setup.SetupEngine
+import com.unipars.app.ui.theme.AppScaffold
+import com.unipars.app.ui.theme.Monogram
+import com.unipars.app.ui.theme.SectionCard
+import com.unipars.app.ui.theme.StatusPill
 import com.unipars.app.work.Scheduler
 import com.unipars.engine.FetchSettings
 import com.unipars.engine.Recipe
@@ -134,7 +135,6 @@ class RecipeDetailViewModel(application: Application, handle: SavedStateHandle) 
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecipeDetailScreen(onBack: () -> Unit, onCheck: (String) -> Unit, vm: RecipeDetailViewModel = viewModel()) {
     val ctx = LocalContext.current
@@ -158,23 +158,28 @@ fun RecipeDetailScreen(onBack: () -> Unit, onCheck: (String) -> Unit, vm: Recipe
         }
     }
 
-    Scaffold(topBar = {
-        TopAppBar(
-            title = { Text(e?.name ?: "", maxLines = 1) },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back)) } },
-            actions = {
-                IconButton(onClick = vm::runNow) { Icon(Icons.Default.PlayArrow, contentDescription = stringResource(R.string.action_run_now)) }
-                IconButton(onClick = { csvLauncher.launch("${e?.domain ?: "data"}.csv") }) { Icon(Icons.Default.Share, contentDescription = stringResource(R.string.action_export_csv)) }
-                IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.action_delete)) }
-            },
-        )
-    }) { padding ->
-        if (e == null) return@Scaffold
+    AppScaffold(
+        title = e?.name ?: "",
+        navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back)) } },
+        actions = {
+            IconButton(onClick = vm::runNow) { Icon(Icons.Default.PlayArrow, contentDescription = stringResource(R.string.action_run_now)) }
+            IconButton(onClick = { csvLauncher.launch("${e?.domain ?: "data"}.csv") }) { Icon(Icons.Default.Share, contentDescription = stringResource(R.string.action_export_csv)) }
+            IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.action_delete)) }
+        },
+    ) { padding ->
+        if (e == null) return@AppScaffold
         val recipe = remember(e.json) { runCatching { e.recipe() }.getOrNull() }
         Column(Modifier.padding(padding).fillMaxSize()) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            SectionCard(modifier = Modifier.padding(horizontal = 12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(statusText(e.status, e.enabled), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    Monogram(e.domain)
+                    Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                        StatusPill(
+                            statusText(e.status, e.enabled),
+                            if (!e.enabled) MaterialTheme.colorScheme.outline else if (e.status == RecipeStatus.ACTIVE) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                        )
+                        Text(e.domain, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     Switch(checked = e.enabled, onCheckedChange = { vm.setEnabled(it) })
                 }
                 Text(stringResource(R.string.detail_last_run, formatTime(e.lastRunAt), e.itemCount), style = MaterialTheme.typography.bodySmall)
@@ -187,7 +192,7 @@ fun RecipeDetailScreen(onBack: () -> Unit, onCheck: (String) -> Unit, vm: Recipe
                 }
             }
             val tabs = listOf(R.string.tab_data, R.string.tab_events, R.string.tab_log, R.string.tab_settings)
-            TabRow(selectedTabIndex = tab) {
+            TabRow(selectedTabIndex = tab, containerColor = MaterialTheme.colorScheme.background) {
                 tabs.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(stringResource(t)) }) }
             }
             when (tab) {

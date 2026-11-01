@@ -3,7 +3,6 @@ package com.unipars.app.ui
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,17 +15,21 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Card
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import com.unipars.app.ui.theme.AppScaffold
+import com.unipars.app.ui.theme.Monogram
+import com.unipars.app.ui.theme.StatusPill
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,7 +63,6 @@ fun statusText(status: RecipeStatus, enabled: Boolean): String = stringResource(
     },
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecipeListScreen(
     onOpen: (String) -> Unit,
@@ -106,55 +108,67 @@ fun RecipeListScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.app_name)) },
-                actions = {
-                    if (assistantState.mode == AssistantMode.HIDDEN) {
-                        IconButton(onClick = { assistant.setMode(AssistantMode.EXPANDED) }) {
-                            Icon(Icons.Default.Search, contentDescription = stringResource(R.string.assistant_title))
-                        }
-                    }
-                    IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings_title)) }
-                    IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.action_more)) }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(text = { Text(stringResource(R.string.export_recipes)) }, onClick = {
-                            menu = false
-                            exportLauncher.launch("uni-pars-recipes.json")
-                        })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.import_recipes)) }, onClick = {
-                            menu = false
-                            importLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
-                        })
-                    }
-                },
-            )
+    AppScaffold(
+        title = stringResource(R.string.app_name),
+        actions = {
+            if (assistantState.mode == AssistantMode.HIDDEN) {
+                IconButton(onClick = { assistant.setMode(AssistantMode.EXPANDED) }) {
+                    Icon(Icons.Default.Search, contentDescription = stringResource(R.string.assistant_title))
+                }
+            }
+            IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings_title)) }
+            IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.action_more)) }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(text = { Text(stringResource(R.string.export_recipes)) }, onClick = {
+                    menu = false
+                    exportLauncher.launch("uni-pars-recipes.json")
+                })
+                DropdownMenuItem(text = { Text(stringResource(R.string.import_recipes)) }, onClick = {
+                    menu = false
+                    importLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                })
+            }
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onNew) { Icon(Icons.Default.Add, contentDescription = stringResource(R.string.new_title_input)) }
+            ExtendedFloatingActionButton(
+                onClick = onNew,
+                icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                text = { Text(stringResource(R.string.new_title_input)) },
+            )
         },
     ) { padding ->
-        LazyColumn(Modifier.padding(padding).fillMaxSize().padding(horizontal = 12.dp)) {
+        LazyColumn(
+            Modifier.padding(padding).fillMaxSize().padding(horizontal = 12.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 96.dp),
+        ) {
             if (!hasKey) item { WarningCard(stringResource(R.string.list_no_key)) }
             item { AssistantPanel(onSetup = onSetup, vm = assistant) }
-            if (recipes.isEmpty()) item { Text(stringResource(R.string.list_empty), modifier = Modifier.padding(16.dp)) }
+            if (recipes.isEmpty()) item { Text(stringResource(R.string.list_empty), modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             items(recipes, key = { it.id }) { r ->
-                Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { onOpen(r.id) }) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(r.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-                        Text(r.domain, style = MaterialTheme.typography.bodySmall)
-                        val color = when {
-                            !r.enabled -> MaterialTheme.colorScheme.outline
-                            r.status == RecipeStatus.ACTIVE -> MaterialTheme.colorScheme.primary
-                            else -> MaterialTheme.colorScheme.error
-                        }
-                        Row {
-                            Text(
-                                stringResource(R.string.list_row, statusText(r.status, r.enabled), formatTime(r.lastRunAt), r.itemCount),
-                                color = color,
-                                style = MaterialTheme.typography.bodySmall,
-                            )
+                ElevatedCard(
+                    onClick = { onOpen(r.id) },
+                    shape = MaterialTheme.shapes.large,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                ) {
+                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Monogram(r.domain)
+                        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                            Text(r.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(r.domain, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
+                                val color = when {
+                                    !r.enabled -> MaterialTheme.colorScheme.outline
+                                    r.status == RecipeStatus.ACTIVE -> MaterialTheme.colorScheme.primary
+                                    else -> MaterialTheme.colorScheme.error
+                                }
+                                StatusPill(statusText(r.status, r.enabled), color)
+                                Text(
+                                    stringResource(R.string.list_row_meta, formatTime(r.lastRunAt), r.itemCount),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 8.dp),
+                                )
+                            }
                         }
                     }
                 }

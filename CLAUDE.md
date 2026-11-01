@@ -14,6 +14,7 @@ it says which file does what, so you rarely need to read more than 1–2 files.
 - Room schema change → bump `AppDatabase` version + add a `Migration` (see `MIGRATION_1_2`).
 - Recipe JSON (`engine/Model.kt`) is persisted and exported: add fields only with defaults.
 - New dependency used via reflection (Jackson etc.) → check `app/proguard-rules.pro` (R8 is on for release).
+- UI: build screens with `AppScaffold`/`SectionCard` from `ui/theme/Components.kt`; colors only from `MaterialTheme`.
 - Code comments: English, explain *why*. UI/notification text: Russian + English resources.
 - Commit trailer lines are given by the session; never put model ids in commits.
 

@@ -33,7 +33,7 @@ One line per file. Paths are under `<module>/src/main/kotlin/com/unipars/<module
 ## app — Android
 | File | Responsibility |
 |---|---|
-| `UniParsApp.kt` | Service locator (db, repository, prefs, notifier), `fetcherFactory` (swapped in tests), crash log |
+| `UniParsApp.kt` | Service locator (db, repository, prefs, notifier), theme `StateFlow` + `updateTheme`, `fetcherFactory` (swapped in tests), crash log |
 | `data/Database.kt` | Room entities/DAOs (recipes, items, events, runs, profiles), migrations |
 | `data/Repository.kt` | Save recipe+profile, previous items, store run results |
 | `data/SecurePrefs.kt` | Keystore-encrypted API keys, provider/model/effort, budget/spend, flags |
@@ -58,7 +58,11 @@ One line per file. Paths are under `<module>/src/main/kotlin/com/unipars/<module
 | `ui/CheckScreen.kt` | Human passes captcha/login in WebView, then resume |
 | `ui/PageWebView.kt` | WebView composable + JS bridge (element picker, fetch/XHR JSON capture) |
 | `ui/Editors.kt` | Settings and triggers editors |
-| `ui/Permissions.kt` | Contextual notification permission request |
+| `ui/Permissions.kt` | Notification permission request (once, or forced in onboarding/settings) |
+| `ui/OnboardingScreen.kt` | First-run wizard: welcome → AI key → appearance → notifications (permission pops up) → background → done |
+| `ui/SetupParts.kt` | Reusable sections: `AiSetupSection` (provider, key links, paste, test), `AppearanceSection`, `NotificationsSection`, `BackgroundSection` |
+| `ui/theme/Theme.kt` | `UniParsTheme`: ThemeMode (system/light/dark), gradient `Palette`s, Material You option, shapes, `LocalAppGradient` |
+| `ui/theme/Components.kt` | `AppScaffold` (gradient top bar), `SectionCard`, `Monogram`, `StatusPill` — use these for new screens |
 
 ## Flow in one paragraph
 Setup: `NewRecipeScreen` → `SetupEngine.probe` (no AI) → optional `research` → `SetupAssistant.createRecipe`

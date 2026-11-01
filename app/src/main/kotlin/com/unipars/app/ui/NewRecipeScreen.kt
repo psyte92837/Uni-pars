@@ -20,16 +20,13 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -54,6 +51,7 @@ import com.unipars.app.R
 import com.unipars.app.UniParsApp
 import com.unipars.app.setup.PageCapture
 import com.unipars.app.setup.SetupEngine
+import com.unipars.app.ui.theme.AppScaffold
 import com.unipars.app.work.Scheduler
 import com.unipars.engine.Confidence
 import com.unipars.engine.FetchSettings
@@ -143,9 +141,17 @@ class NewRecipeViewModel(application: Application, handle: SavedStateHandle) : A
                     engine.addUsage(total)
                     r to total
                 }
+                // User defaults from onboarding/settings; never more frequent than the site's recommendation allows.
+                val defaults = result.recipe.settings.let { st ->
+                    val userInterval = app.prefs.defaultIntervalMinutes
+                    st.copy(
+                        intervalMinutes = if (userInterval > 0) maxOf(userInterval, st.intervalMinutes / 2, 15) else st.intervalMinutes,
+                        wifiOnly = st.wifiOnly || app.prefs.defaultWifiOnly,
+                    )
+                }
                 state.update {
                     it.copy(
-                        step = SetupStep.RESULT, result = result, recipe = result.recipe, usage = usage,
+                        step = SetupStep.RESULT, result = result, recipe = result.recipe.copy(settings = defaults), usage = usage,
                         costUsd = engine.estimateUsd(usage), foreignConfirmed = false,
                     )
                 }
@@ -174,7 +180,6 @@ class NewRecipeViewModel(application: Application, handle: SavedStateHandle) : A
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NewRecipeScreen(onDone: () -> Unit, vm: NewRecipeViewModel = viewModel()) {
     val s by vm.state.collectAsStateWithLifecycle()
@@ -195,16 +200,14 @@ fun NewRecipeScreen(onDone: () -> Unit, vm: NewRecipeViewModel = viewModel()) {
             SetupStep.RESULT -> R.string.new_title_result
         },
     )
-    Scaffold(topBar = {
-        TopAppBar(
-            title = { Text(title) },
-            navigationIcon = {
-                IconButton(onClick = { if (s.step == SetupStep.INPUT) onDone() else vm.back() }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
-                }
-            },
-        )
-    }) { padding ->
+    AppScaffold(
+        title = title,
+        navigationIcon = {
+            IconButton(onClick = { if (s.step == SetupStep.INPUT) onDone() else vm.back() }) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+            }
+        },
+    ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (s.step) {
                 SetupStep.INPUT -> InputStep(s, vm)

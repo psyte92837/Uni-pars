@@ -18,6 +18,8 @@ import com.unipars.app.ui.MainActivity
 
 class Notifier(private val context: Context) {
 
+    private val prefs get() = (context.applicationContext as com.unipars.app.UniParsApp).prefs
+
     fun createChannels() {
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CH_RESULTS, context.getString(R.string.channel_results), NotificationManager.IMPORTANCE_DEFAULT))
@@ -32,7 +34,7 @@ class Notifier(private val context: Context) {
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
     fun events(recipeId: String, recipeName: String, events: List<EventEntity>) {
-        if (events.isEmpty()) return
+        if (events.isEmpty() || !prefs.notifyChanges) return
         val lines = events.map(::describe)
         val title = if (events.size == 1) recipeName else context.getString(R.string.notif_changes_title, recipeName, events.size)
         val style = NotificationCompat.InboxStyle().also { s -> lines.take(7).forEach { s.addLine(it) } }
@@ -51,6 +53,7 @@ class Notifier(private val context: Context) {
 
     /** One notification per domain, so several recipes on the same site do not spam. */
     fun needsHuman(recipeId: String, domain: String, reason: String) {
+        if (!prefs.notifyActions) return
         val text = context.getString(R.string.notif_check_text, reason)
         val n = NotificationCompat.Builder(context, CH_ACTION)
             .setSmallIcon(R.drawable.ic_notify)
@@ -65,6 +68,7 @@ class Notifier(private val context: Context) {
     }
 
     fun broken(recipeId: String, recipeName: String, problem: String) {
+        if (!prefs.notifyActions) return
         val n = NotificationCompat.Builder(context, CH_ACTION)
             .setSmallIcon(R.drawable.ic_notify)
             .setContentTitle(context.getString(R.string.notif_broken_title, recipeName))
@@ -77,6 +81,7 @@ class Notifier(private val context: Context) {
     }
 
     fun delayed(count: Int) {
+        if (!prefs.notifyApp) return
         val n = NotificationCompat.Builder(context, CH_APP)
             .setSmallIcon(R.drawable.ic_notify)
             .setContentTitle(context.getString(R.string.notif_delayed_title))
@@ -89,6 +94,7 @@ class Notifier(private val context: Context) {
     }
 
     fun update(version: String, url: String) {
+        if (!prefs.notifyApp) return
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val n = NotificationCompat.Builder(context, CH_APP)
             .setSmallIcon(R.drawable.ic_notify)

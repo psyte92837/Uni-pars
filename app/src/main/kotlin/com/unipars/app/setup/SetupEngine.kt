@@ -62,6 +62,16 @@ class SetupEngine(private val context: Context) {
         return provider.create(key, model, app.prefs.effort)
     }
 
+    /** Sends a tiny request to check that a key works; returns null on success or a user-facing error. */
+    fun testKey(provider: com.unipars.ai.AiProvider, key: String, model: String): String? = try {
+        provider.create(key.trim(), model, "low").complete(
+            com.unipars.ai.AiRequest("Reply with the single word OK.", listOf(com.unipars.ai.ChatMessage(com.unipars.ai.Role.USER, "ping")), maxTokens = 256),
+        )
+        null
+    } catch (e: Exception) {
+        e.message ?: e.toString()
+    }
+
     /** Approximate cost in USD, or null for models without a known price. */
     fun estimateUsd(usage: AiUsage): Double? = Pricing.estimateUsd(model, usage)
 

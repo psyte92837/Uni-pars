@@ -117,6 +117,45 @@ class SecurePrefs(context: Context) {
         get() = prefs.getString("assistant_mode", "EXPANDED") ?: "EXPANDED"
         set(v) = prefs.edit().putString("assistant_mode", v).apply()
 
+    var onboardingDone: Boolean
+        get() = prefs.getBoolean("onboarding_done", false)
+        set(v) = prefs.edit().putBoolean("onboarding_done", v).apply()
+
+    /** SYSTEM | LIGHT | DARK */
+    var themeMode: String
+        get() = prefs.getString("theme_mode", "SYSTEM") ?: "SYSTEM"
+        set(v) = prefs.edit().putString("theme_mode", v).apply()
+
+    var themePalette: String
+        get() = prefs.getString("theme_palette", "AURORA") ?: "AURORA"
+        set(v) = prefs.edit().putString("theme_palette", v).apply()
+
+    var dynamicColor: Boolean
+        get() = prefs.getBoolean("dynamic_color", false)
+        set(v) = prefs.edit().putBoolean("dynamic_color", v).apply()
+
+    /** Which notification kinds the user wants (Android channels can additionally be muted in system settings). */
+    var notifyChanges: Boolean
+        get() = prefs.getBoolean("notify_changes", true)
+        set(v) = prefs.edit().putBoolean("notify_changes", v).apply()
+
+    var notifyActions: Boolean
+        get() = prefs.getBoolean("notify_actions", true)
+        set(v) = prefs.edit().putBoolean("notify_actions", v).apply()
+
+    var notifyApp: Boolean
+        get() = prefs.getBoolean("notify_app", true)
+        set(v) = prefs.edit().putBoolean("notify_app", v).apply()
+
+    /** Defaults applied to new recipes; 0 = use the AI/probe recommendation. */
+    var defaultIntervalMinutes: Int
+        get() = prefs.getInt("default_interval", 0)
+        set(v) = prefs.edit().putInt("default_interval", v).apply()
+
+    var defaultWifiOnly: Boolean
+        get() = prefs.getBoolean("default_wifi", false)
+        set(v) = prefs.edit().putBoolean("default_wifi", v).apply()
+
     var lastUpdateCheck: Long
         get() = prefs.getLong("update_check", 0)
         set(v) = prefs.edit().putLong("update_check", v).apply()

@@ -7,8 +7,13 @@ import com.unipars.app.data.Repository
 import com.unipars.app.data.SecurePrefs
 import com.unipars.app.net.AppFetcher
 import com.unipars.app.notify.Notifier
+import com.unipars.app.ui.theme.Palette
+import com.unipars.app.ui.theme.ThemeMode
+import com.unipars.app.ui.theme.ThemeSettings
 import com.unipars.app.work.MaintenanceWorker
 import com.unipars.engine.PageFetcher
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import java.io.File
 
 class UniParsApp : Application() {
@@ -22,6 +27,26 @@ class UniParsApp : Application() {
     var fetcherFactory: (Context) -> PageFetcher = { AppFetcher(it) }
 
     val crashFile: File get() = File(filesDir, "last_crash.txt")
+
+    private val themeState by lazy {
+        MutableStateFlow(
+            ThemeSettings(
+                mode = runCatching { ThemeMode.valueOf(prefs.themeMode) }.getOrDefault(ThemeMode.SYSTEM),
+                palette = runCatching { Palette.valueOf(prefs.themePalette) }.getOrDefault(Palette.AURORA),
+                dynamicColor = prefs.dynamicColor,
+            ),
+        )
+    }
+
+    /** Observed by the activity so theme changes apply instantly. */
+    val theme: StateFlow<ThemeSettings> get() = themeState
+
+    fun updateTheme(settings: ThemeSettings) {
+        prefs.themeMode = settings.mode.name
+        prefs.themePalette = settings.palette.name
+        prefs.dynamicColor = settings.dynamicColor
+        themeState.value = settings
+    }
 
     override fun onCreate() {
         super.onCreate()
