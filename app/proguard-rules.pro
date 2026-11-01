@@ -28,6 +28,8 @@
 -dontwarn io.opentelemetry.**
 -dontwarn io.swagger.**
 -dontwarn java.beans.**
+# Only referenced by the SDK's class-based structured outputs, which the app does not use.
+-dontwarn java.lang.reflect.AnnotatedType
 -dontwarn javax.annotation.**
 -dontwarn org.jspecify.**
 -dontwarn org.slf4j.**
