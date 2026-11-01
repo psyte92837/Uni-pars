@@ -9,6 +9,7 @@ import com.unipars.engine.Item
 import com.unipars.engine.ProbeFacts
 import com.unipars.engine.ProfileNote
 import com.unipars.engine.Recipe
+import com.unipars.engine.Safety
 import com.unipars.engine.SiteProbe
 import com.unipars.engine.Validator
 import kotlinx.serialization.SerializationException
@@ -35,6 +36,8 @@ data class SetupResult(
     val preview: List<Item>,
     /** Non-null when the last attempt still failed local validation; the user decides. */
     val validationProblem: String?,
+    /** Non-null when the model pointed the recipe at another site; the user must confirm it explicitly. */
+    val foreignSource: String?,
     val attempts: Int,
     val usage: AiUsage,
 )
@@ -116,6 +119,7 @@ class SetupAssistant(private val client: AiClient, private val maxAttempts: Int 
                 explanation = draft.explanation,
                 preview = extraction.items.take(20),
                 validationProblem = problem,
+                foreignSource = recipe.source.url.takeUnless { Safety.sameSite(it, input.url) },
                 attempts = attempt,
                 usage = usage,
             )

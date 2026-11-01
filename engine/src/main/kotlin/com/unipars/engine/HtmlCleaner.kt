@@ -18,11 +18,22 @@ object HtmlCleaner {
 
     data class Cleaned(val html: String, val jsonLd: List<String>, val originalChars: Int)
 
-    fun clean(html: String, baseUrl: String, maxChars: Int = 60_000, keepSiblings: Int = 3): Cleaned {
+    /**
+     * @param maskPersonal masks e-mails, phones and card numbers and drops form values, because the
+     *   page may belong to the user's logged-in session and is about to be sent to an AI provider.
+     */
+    fun clean(html: String, baseUrl: String, maxChars: Int = 60_000, keepSiblings: Int = 3, maskPersonal: Boolean = true): Cleaned {
         val doc = Jsoup.parse(html, baseUrl)
-        val jsonLd = doc.select("script[type=application/ld+json]").map { it.data().trim().take(4_000) }
+        val jsonLd = doc.select("script[type=application/ld+json]").map {
+            val data = it.data().trim().take(4_000)
+            if (maskPersonal) Safety.maskPersonalData(data) else data
+        }
         val root: Element = doc.body() ?: doc
         dropTags.forEach { root.select(it).remove() }
+        if (maskPersonal) {
+            root.select("input[type=password], input[type=hidden], textarea").remove()
+            root.select("input[value]").forEach { it.attr("value", "") }
+        }
         doc.select("header nav, footer").remove()
         removeComments(root)
         root.allElements.forEach { el ->
@@ -38,6 +49,14 @@ object HtmlCleaner {
         }
         collapseRepeats(root, keepSiblings)
         truncateText(root)
+        if (maskPersonal) {
+            root.allElements.forEach { el ->
+                el.textNodes().forEach { t -> t.text(Safety.maskPersonalData(t.text())) }
+                listOf("title", "alt", "aria-label", "content", "href").forEach { a ->
+                    if (el.hasAttr(a)) el.attr(a, Safety.maskPersonalData(el.attr(a)))
+                }
+            }
+        }
         var out = root.html().replace(Regex("\\n\\s*\\n+"), "\n")
         if (out.length > maxChars) out = out.take(maxChars) + "\n<!-- truncated -->"
         return Cleaned(out, jsonLd, html.length)

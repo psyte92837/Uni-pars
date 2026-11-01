@@ -92,8 +92,8 @@ object Extractor {
     internal fun postProcess(raw: String?, spec: FieldSpec, baseUrl: String): String? {
         var v = raw?.trim() ?: return null
         spec.regex?.let { pattern ->
-            val m = Regex(pattern).find(v) ?: return null
-            v = (m.groups[1]?.value ?: m.value).trim()
+            // Model-written regexes run with a time budget so a pathological one cannot hang a run.
+            v = Safety.regexFind(pattern, v) ?: return null
         }
         return when (spec.transform) {
             Transform.NONE, Transform.TRIM -> v

@@ -15,5 +15,7 @@ kotlin {
 dependencies {
     api(project(":engine"))
     implementation(libs.anthropic.java)
+    implementation(libs.okhttp)
     testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
 }

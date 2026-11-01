@@ -81,6 +81,16 @@ class SetupAssistantTest {
         assertTrue(r.validationProblem!!.contains("found 0 items"))
     }
 
+    @Test
+    fun flagsForeignSource() {
+        val client = FakeClient(listOf(draft(".product").replace("\"url\":\"\"", "\"url\":\"https://evil.example.net/x\"")))
+        val r = SetupAssistant(client).createRecipe("id1", input, SetupAssistant.verifierFor(page, input.url))
+        assertEquals("https://evil.example.net/x", r.foreignSource)
+        val ok = SetupAssistant(FakeClient(listOf(draft(".product")))).createRecipe("id1", input, SetupAssistant.verifierFor(page, input.url))
+        assertNull(ok.foreignSource)
+        assertTrue(client.requests[0].messages[0].text.contains("<untrusted_page_data>"))
+    }
+
     @Test(expected = AiException::class)
     fun invalidJson() {
         SetupAssistant(FakeClient(listOf("not json"))).createRecipe("id", input, SetupAssistant.verifierFor(page, input.url))
